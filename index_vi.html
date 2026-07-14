@@ -1,0 +1,1614 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Thiết lập ban đầu · Ảo Tưởng Hương Duyên Khởi MVU</title><script type="module">var __webpack_modules__ = {
+  235: (__unused_webpack_module, exports) => {
+    var __webpack_unused_export__;
+    __webpack_unused_export__ = {
+      value: true
+    };
+    exports.A = (sfc, props) => {
+      const target = sfc.__vccOpts || sfc;
+      for (const [key, val] of props) {
+        target[key] = val;
+      }
+      return target;
+    };
+  }
+};
+
+var __webpack_module_cache__ = {};
+
+function __webpack_require__(moduleId) {
+  var cachedModule = __webpack_module_cache__[moduleId];
+  if (cachedModule !== undefined) {
+    return cachedModule.exports;
+  }
+  var module = __webpack_module_cache__[moduleId] = {
+    exports: {}
+  };
+  __webpack_modules__[moduleId](module, module.exports, __webpack_require__);
+  return module.exports;
+}
+
+var __webpack_exports__ = {};
+
+const external_Vue_namespaceObject = Vue;
+
+const external_namespaceObject = _;
+
+const PROJECT_NAME = "GSKO-Starter";
+
+const DEBUG_CONFIG_LS_KEY = "gsko_era_debug_config";
+
+let enabledPatterns = [];
+
+let disabledPatterns = [];
+
+function loadDebugConfig() {
+  try {
+    const configStr = globalThis.localStorage?.getItem(DEBUG_CONFIG_LS_KEY) || '{"enabled":[],"disabled":[]}';
+    const config = JSON.parse(configStr);
+    const toRegex = p => new RegExp(`^${p.replace(/\*/g, ".*?")}$`);
+    enabledPatterns = (config.enabled || []).map(toRegex);
+    disabledPatterns = (config.disabled || []).map(toRegex);
+  } catch (e) {
+    console.error(`《${PROJECT_NAME}-Log》: Tải cấu hình debug thất bại.`, e);
+    enabledPatterns = [];
+    disabledPatterns = [];
+  }
+}
+
+function isDebugEnabled(moduleName) {
+  if (!moduleName) return false;
+  if (disabledPatterns.some(re => re.test(moduleName))) {
+    return false;
+  }
+  if (enabledPatterns.length === 0) {
+    return false;
+  }
+  if (enabledPatterns.some(re => re.test(moduleName))) {
+    return true;
+  }
+  return false;
+}
+
+function updateConfig(newConfig) {
+  const uniqueConfig = {
+    enabled: [ ...new Set(newConfig.enabled) ],
+    disabled: [ ...new Set(newConfig.disabled) ]
+  };
+  globalThis.localStorage?.setItem(DEBUG_CONFIG_LS_KEY, JSON.stringify(uniqueConfig));
+  loadDebugConfig();
+  console.log(`%c《${PROJECT_NAME}-Log》Chế độ debug đã được cập nhật.`, "color: #3498db; font-weight: bold;", {
+    "Kích hoạt (Enabled)": uniqueConfig.enabled,
+    "Vô hiệu (Disabled)": uniqueConfig.disabled
+  });
+}
+
+loadDebugConfig();
+
+if (typeof globalThis !== "undefined") {
+  const eraDebug = {
+    add(pattern) {
+      const configStr = globalThis.localStorage?.getItem(DEBUG_CONFIG_LS_KEY) || '{"enabled":[],"disabled":[]}';
+      const config = JSON.parse(configStr);
+      const enabled = new Set(config.enabled || []);
+      const disabled = new Set(config.disabled || []);
+      enabled.add(pattern);
+      disabled.delete(pattern);
+      updateConfig({
+        enabled: Array.from(enabled),
+        disabled: Array.from(disabled)
+      });
+    },
+    remove(pattern) {
+      const configStr = globalThis.localStorage?.getItem(DEBUG_CONFIG_LS_KEY) || '{"enabled":[],"disabled":[]}';
+      const config = JSON.parse(configStr);
+      const enabled = new Set(config.enabled || []);
+      const disabled = new Set(config.disabled || []);
+      disabled.add(pattern);
+      enabled.delete(pattern);
+      updateConfig({
+        enabled: Array.from(enabled),
+        disabled: Array.from(disabled)
+      });
+    },
+    status() {
+      const configStr = globalThis.localStorage?.getItem(DEBUG_CONFIG_LS_KEY) || '{"enabled":[],"disabled":[]}';
+      const config = JSON.parse(configStr);
+      console.log(`%c《${PROJECT_NAME}-Log》Cấu hình debug hiện tại:`, "color: #3498db; font-weight: bold;", config);
+    },
+    clear() {
+      updateConfig({
+        enabled: [],
+        disabled: []
+      });
+    }
+  };
+  globalThis.eraDebug = eraDebug;
+}
+
+const logContext = {
+  mk: ""
+};
+
+class Logger {
+  moduleName;
+  constructor(...[moduleName]) {
+    const maybeModuleName = moduleName;
+    const injectedModuleName = typeof maybeModuleName === "string" ? maybeModuleName : undefined;
+    this.moduleName = injectedModuleName || this._getModuleNameFromStack() || "unknown";
+  }
+  _getModuleNameFromStack() {
+    try {
+      const stack = (new Error).stack || "";
+      const callerLine = stack.split("\n").find(line => (line.includes(`/src/${PROJECT_NAME}/`) || line.includes(`/dist/${PROJECT_NAME}/`) || line.includes(`\\src\\${PROJECT_NAME}\\`) || line.includes(`\\dist\\${PROJECT_NAME}\\`)) && !line.includes("/utils/log.ts"));
+      if (!callerLine) {
+        return null;
+      }
+      const match = callerLine.match(new RegExp(`(src|dist)[\\\\/]${PROJECT_NAME}[\\\\/]([^?:]+)`));
+      if (!match || !match[2]) {
+        return null;
+      }
+      const path = match[2];
+      return path.replace(/\\/g, "/").replace(/\.(vue|ts|js)$/, "").replace(/\/index$/, "");
+    } catch (e) {
+      console.error(`《${PROJECT_NAME}-Log-Debug》: Gặp lỗi không mong muốn khi phân tích tên module.`, e);
+      return null;
+    }
+  }
+  formatMessage(funcName, message) {
+    const mkString = logContext.mk ? `（${logContext.mk}）` : "";
+    return `《${PROJECT_NAME}》${mkString}「${this.moduleName}」【${funcName}】${String(message)}`;
+  }
+  debug(funcName, message, obj) {
+    if (!isDebugEnabled(this.moduleName)) {
+      return;
+    }
+    const formattedMessage = this.formatMessage(funcName, message);
+    if (obj !== undefined) {
+      console.debug(formattedMessage, obj);
+    } else {
+      console.debug(formattedMessage);
+    }
+  }
+  log(funcName, message, obj) {
+    const formattedMessage = this.formatMessage(funcName, message);
+    if (obj !== undefined) {
+      console.log(`%c${formattedMessage}`, "color: #3498db;", obj);
+    } else {
+      console.log(`%c${formattedMessage}`, "color: #3498db;");
+    }
+  }
+  warn(funcName, message, obj) {
+    const formattedMessage = this.formatMessage(funcName, message);
+    if (obj !== undefined) {
+      console.warn(`%c${formattedMessage}`, "color: #f39c12;", obj);
+    } else {
+      console.warn(`%c${formattedMessage}`, "color: #f39c12;");
+    }
+  }
+  error(funcName, message, errorObj) {
+    const formattedMessage = this.formatMessage(funcName, message);
+    if (errorObj !== undefined) {
+      console.error(`%c${formattedMessage}`, "color: #e74c3c; font-weight: bold;", errorObj);
+    } else {
+      console.error(`%c${formattedMessage}`, "color: #e74c3c; font-weight: bold;");
+    }
+  }
+}
+
+const _hoisted_1 = {
+  class: "GensokyoOrigin-Starter-story-container"
+};
+
+const StoryButtonvue_type_script_setup_true_lang_ts = (0, external_Vue_namespaceObject.defineComponent)({
+  __name: "StoryButton",
+  setup(__props) {
+    const logger = new Logger("Starter/components/StoryButton");
+    const customOpening = (0, external_Vue_namespaceObject.ref)("");
+    const handleClick = () => {
+      const funcName = "handleClick";
+      logger.log(funcName, "Click nút, bắt đầu xử lý quy trình.");
+      if (typeof eventEmit !== "function" || typeof eventOnce !== "function") {
+        logger.error(funcName, "Hàm eventEmit hoặc eventOnce chưa được định nghĩa.");
+        return;
+      }
+      logger.log(funcName, "Gửi sự kiện STARTER:IGNORE_NEXT_SHOW_UI.");
+      eventEmit("STARTER:IGNORE_NEXT_SHOW_UI");
+      logger.log(funcName, "Gửi sự kiện era:forceSync.");
+      eventEmit("era:forceSync", {
+        mode: "latest"
+      });
+      logger.log(funcName, "Bắt đầu lắng nghe sự kiện GSKO:showUI một lần.");
+      eventOnce("GSKO:showUI", () => {
+        logger.log(funcName, "Nhận được sự kiện GSKO:showUI, thực thi requestStory.");
+        requestStory();
+      });
+    };
+    const requestStory = async () => {
+      const funcName = "requestStory";
+      try {
+        const defaultGuidelines = "Hãy tạo một đoạn truyện ngắn về nhân vật chính tại khung cảnh hiện tại, tập trung mô tả bầu không khí và tương tác giữa các nhân vật, không đẩy mạnh cốt truyện chính, làm khởi đầu cho mọi thứ.";
+        const guidelines = customOpening.value.trim() || defaultGuidelines;
+        const payload = {
+          type: "GENERATE_STORY_SCENE",
+          guidelines
+        };
+        const msg = JSON.stringify(payload, null, 2);
+        const cmd = `/send ${msg}|/trigger`;
+        if (typeof triggerSlash === "function") {
+          await triggerSlash(cmd);
+          logger.log(funcName, "Yêu cầu tạo câu chuyện đã được gửi.");
+        } else {
+          logger.warn(funcName, "Không phát hiện triggerSlash, không thể tự động gửi.");
+          alert("Không tìm thấy triggerSlash, không thể tự động gửi. Nội dung đã được in ra console.");
+          console.warn("Nội dung chuẩn bị gửi:\n", msg);
+        }
+      } catch (error) {
+        logger.error(funcName, "Gửi yêu cầu tạo câu chuyện thất bại:", error);
+      }
+    };
+    return (_ctx, _cache) => ((0, external_Vue_namespaceObject.openBlock)(), (0, external_Vue_namespaceObject.createElementBlock)("div", _hoisted_1, [ (0, 
+    external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("textarea", {
+      "onUpdate:modelValue": _cache[0] || (_cache[0] = $event => customOpening.value = $event),
+      class: "GensokyoOrigin-Starter-openingInput",
+      placeholder: "Bạn có thể nhập yêu cầu mở đầu đặc biệt tại đây, ví dụ: \"Tôi muốn khi sắp chết đói thì bất ngờ xuyên không tới Đền Hakurei, rồi ăn hết số gạo ít ỏi cuối cùng mà Reimu cất giấu\". Để trống sẽ tạo mở đầu mặc định."
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelText, customOpening.value ] ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("button", {
+      class: "GensokyoOrigin-Starter-storyButton",
+      onClick: handleClick
+    }, " Bắt đầu câu chuyện Ảo Tưởng Hương (Hãy lưu lại chỉnh sửa) ") ]));
+  }
+});
+
+const __exports__ = StoryButtonvue_type_script_setup_true_lang_ts;
+
+const StoryButton = __exports__;
+
+const external_z_namespaceObject = z;
+
+const ERA_EVENT_NAMES = {
+  INSERT_BY_OBJECT: "era:insertByObject",
+  UPDATE_BY_OBJECT: "era:updateByObject",
+  INSERT_BY_PATH: "era:insertByPath",
+  UPDATE_BY_PATH: "era:updateByPath",
+  DELETE_BY_OBJECT: "era:deleteByObject",
+  DELETE_BY_PATH: "era:deleteByPath",
+  GET_CURRENT_VARS: "era:getCurrentVars",
+  GET_SNAPSHOT_AT_MK: "era:getSnapshotAtMk",
+  GET_SNAPSHOTS_BETWEEN_MKS: "era:getSnapshotsBetweenMks",
+  GET_SNAPSHOT_AT_MID: "era:getSnapshotAtMId",
+  GET_SNAPSHOTS_BETWEEN_MIDS: "era:getSnapshotsBetweenMIds",
+  REQUEST_WRITE_DONE: "era:requestWriteDone"
+};
+
+const ERA_BROADCAST_EVENT_NAMES = {
+  WRITE_DONE: "era:writeDone",
+  QUERY_RESULT: "era:queryResult"
+};
+
+const QueryResultItemSchema = external_z_namespaceObject.z.object({
+  mk: external_z_namespaceObject.z.string(),
+  message_id: external_z_namespaceObject.z.number(),
+  is_user: external_z_namespaceObject.z.boolean(),
+  stat: external_z_namespaceObject.z.any(),
+  statWithoutMeta: external_z_namespaceObject.z.any()
+});
+
+const mkValueSchema = external_z_namespaceObject.z.string().nullable();
+
+const PeriodAnchorSchema = external_z_namespaceObject.z.object({
+  newDawn: mkValueSchema,
+  newMorning: mkValueSchema,
+  newNoon: mkValueSchema,
+  newAfternoon: mkValueSchema,
+  newDusk: mkValueSchema,
+  newNight: mkValueSchema,
+  newFirstHalfNight: mkValueSchema,
+  newSecondHalfNight: mkValueSchema
+}).partial().default({});
+
+const SeasonAnchorSchema = external_z_namespaceObject.z.object({
+  newSpring: mkValueSchema,
+  newSummer: mkValueSchema,
+  newAutumn: mkValueSchema,
+  newWinter: mkValueSchema
+}).partial().default({});
+
+const TimeChatMkAnchorsSchema = external_z_namespaceObject.z.object({
+  newPeriod: mkValueSchema,
+  period: PeriodAnchorSchema,
+  newDay: mkValueSchema,
+  newWeek: mkValueSchema,
+  newMonth: mkValueSchema,
+  newSeason: mkValueSchema,
+  season: SeasonAnchorSchema,
+  newYear: mkValueSchema
+}).partial().default({});
+
+const createEmptyAnchors = () => ({});
+
+const TimeChatMkSyncCacheSchema = external_z_namespaceObject.z.object({
+  anchors: TimeChatMkAnchorsSchema.optional()
+}).optional().default(() => ({
+  anchors: createEmptyAnchors()
+}));
+
+const TimeChatMkSyncRuntimeSchema = external_z_namespaceObject.z.object({
+  anchors: TimeChatMkAnchorsSchema.optional()
+}).optional().default(() => ({
+  anchors: createEmptyAnchors()
+}));
+
+const BY_PERIOD_KEYS = null && TIME_PERIOD_KEYS;
+
+const BY_SEASON_KEYS = null && TIME_SEASON_KEYS;
+
+const ClockAckSchema = external_z_namespaceObject.z.object({
+  dayID: external_z_namespaceObject.z.number(),
+  weekID: external_z_namespaceObject.z.number(),
+  monthID: external_z_namespaceObject.z.number(),
+  yearID: external_z_namespaceObject.z.number(),
+  periodID: external_z_namespaceObject.z.number(),
+  periodIdx: external_z_namespaceObject.z.number(),
+  seasonID: external_z_namespaceObject.z.number(),
+  seasonIdx: external_z_namespaceObject.z.number()
+});
+
+const NowSchema = external_z_namespaceObject.z.object({
+  iso: external_z_namespaceObject.z.string(),
+  year: external_z_namespaceObject.z.number(),
+  month: external_z_namespaceObject.z.number(),
+  day: external_z_namespaceObject.z.number(),
+  weekdayIndex: external_z_namespaceObject.z.number(),
+  weekdayName: external_z_namespaceObject.z.string(),
+  periodName: external_z_namespaceObject.z.string(),
+  periodIdx: external_z_namespaceObject.z.number(),
+  minutesSinceMidnight: external_z_namespaceObject.z.number(),
+  seasonName: external_z_namespaceObject.z.string(),
+  seasonIdx: external_z_namespaceObject.z.number(),
+  hour: external_z_namespaceObject.z.number(),
+  minute: external_z_namespaceObject.z.number(),
+  hm: external_z_namespaceObject.z.string()
+});
+
+const ClockFlagsSchema = external_z_namespaceObject.z.object({
+  newPeriod: external_z_namespaceObject.z.boolean(),
+  byPeriod: external_z_namespaceObject.z.object({
+    newDawn: external_z_namespaceObject.z.boolean(),
+    newMorning: external_z_namespaceObject.z.boolean(),
+    newNoon: external_z_namespaceObject.z.boolean(),
+    newAfternoon: external_z_namespaceObject.z.boolean(),
+    newDusk: external_z_namespaceObject.z.boolean(),
+    newNight: external_z_namespaceObject.z.boolean(),
+    newFirstHalfNight: external_z_namespaceObject.z.boolean(),
+    newSecondHalfNight: external_z_namespaceObject.z.boolean()
+  }),
+  newDay: external_z_namespaceObject.z.boolean(),
+  newWeek: external_z_namespaceObject.z.boolean(),
+  newMonth: external_z_namespaceObject.z.boolean(),
+  newSeason: external_z_namespaceObject.z.boolean(),
+  bySeason: external_z_namespaceObject.z.object({
+    newSpring: external_z_namespaceObject.z.boolean(),
+    newSummer: external_z_namespaceObject.z.boolean(),
+    newAutumn: external_z_namespaceObject.z.boolean(),
+    newWinter: external_z_namespaceObject.z.boolean()
+  }),
+  newYear: external_z_namespaceObject.z.boolean()
+});
+
+const CLOCK_ROOT_FLAG_KEYS = null && [ "newPeriod", "newDay", "newWeek", "newMonth", "newSeason", "newYear" ];
+
+const ClockSchema = external_z_namespaceObject.z.object({
+  now: NowSchema,
+  flags: ClockFlagsSchema,
+  mkAnchors: TimeChatMkAnchorsSchema.optional(),
+  previousMkAnchors: TimeChatMkAnchorsSchema.optional()
+});
+
+const EMPTY_NOW = {
+  iso: "",
+  year: 0,
+  month: 0,
+  day: 0,
+  weekdayIndex: 0,
+  weekdayName: "",
+  periodName: "",
+  periodIdx: 0,
+  minutesSinceMidnight: 0,
+  seasonName: "",
+  seasonIdx: 0,
+  hour: 0,
+  minute: 0,
+  hm: ""
+};
+
+const EMPTY_FLAGS = {
+  newPeriod: false,
+  byPeriod: {
+    newDawn: false,
+    newMorning: false,
+    newNoon: false,
+    newAfternoon: false,
+    newDusk: false,
+    newNight: false,
+    newFirstHalfNight: false,
+    newSecondHalfNight: false
+  },
+  newDay: false,
+  newWeek: false,
+  newMonth: false,
+  newSeason: false,
+  bySeason: {
+    newSpring: false,
+    newSummer: false,
+    newAutumn: false,
+    newWinter: false
+  },
+  newYear: false
+};
+
+const OtherCharacterInfoSchema = external_z_namespaceObject.z.object({
+  name: external_z_namespaceObject.z.string(),
+  target: external_z_namespaceObject.z.string()
+});
+
+const AyaNewsEntrySchema = external_z_namespaceObject.z.object({
+  location: external_z_namespaceObject.z.string(),
+  otherCharacters: external_z_namespaceObject.z.array(OtherCharacterInfoSchema),
+  target: external_z_namespaceObject.z.string(),
+  clockAck: ClockAckSchema
+});
+
+const AyaNewsSchema = external_z_namespaceObject.z.object({
+  entries: external_z_namespaceObject.z.array(AyaNewsEntrySchema)
+});
+
+const PreprocessStringifiedObject = schema => external_z_namespaceObject.z.preprocess(val => {
+  if (typeof val === "string") {
+    try {
+      return JSON.parse(val);
+    } catch (e) {
+      return val;
+    }
+  }
+  return val;
+}, schema);
+
+const TimeUnitSchema = external_z_namespaceObject.z.enum([ "period", "day", "week", "month", "season", "year" ]);
+
+const ForgettingRuleSchema = external_z_namespaceObject.z.object({
+  triggerFlag: external_z_namespaceObject.z.string(),
+  decrease: external_z_namespaceObject.z.number()
+});
+
+const AffectionStageWithForgetSchema = external_z_namespaceObject.z.object({
+  threshold: external_z_namespaceObject.z.number(),
+  name: external_z_namespaceObject.z.string(),
+  describe: external_z_namespaceObject.z.string().nullable().optional(),
+  patienceUnit: TimeUnitSchema.optional(),
+  visit: external_z_namespaceObject.z.object({
+    enabled: external_z_namespaceObject.z.boolean().optional(),
+    probBase: external_z_namespaceObject.z.number().optional(),
+    probK: external_z_namespaceObject.z.number().optional(),
+    coolUnit: TimeUnitSchema.optional()
+  }).optional(),
+  forgettingSpeed: external_z_namespaceObject.z.array(PreprocessStringifiedObject(ForgettingRuleSchema)).optional(),
+  affectionGrowthLimit: external_z_namespaceObject.z.object({
+    max: external_z_namespaceObject.z.number(),
+    divisor: external_z_namespaceObject.z.number()
+  }).optional()
+}).passthrough();
+
+const ActionSchema = external_z_namespaceObject.z.object({
+  do: external_z_namespaceObject.z.string(),
+  to: external_z_namespaceObject.z.string().optional(),
+  from: external_z_namespaceObject.z.string().optional(),
+  source: external_z_namespaceObject.z.string().optional()
+});
+
+const EntrySchema = external_z_namespaceObject.z.object({
+  when: external_z_namespaceObject.z.any(),
+  action: ActionSchema,
+  priority: external_z_namespaceObject.z.number().optional()
+});
+
+const EntryListSchema = external_z_namespaceObject.z.array(EntrySchema);
+
+const EntryListPreprocessSchema = external_z_namespaceObject.z.array(PreprocessStringifiedObject(EntrySchema));
+
+const CharacterSettingsSchema = external_z_namespaceObject.z.object({
+  id: external_z_namespaceObject.z.string(),
+  name: external_z_namespaceObject.z.string(),
+  affectionStages: external_z_namespaceObject.z.array(AffectionStageWithForgetSchema),
+  specials: EntryListPreprocessSchema,
+  routine: EntryListPreprocessSchema
+});
+
+const CharacterSettingsMapSchema = external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), CharacterSettingsSchema);
+
+const IncidentDetailSchema = external_z_namespaceObject.z.object({
+  Chi_tiết_dị_biến: external_z_namespaceObject.z.string(),
+  Khu_vực_chính: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()),
+  Người_giải_quyết_dị_biến: external_z_namespaceObject.z.union([ external_z_namespaceObject.z.string(), external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()) ]).optional(),
+  Dị_biến_đã_kết_thúc: external_z_namespaceObject.z.boolean()
+});
+
+const IncidentsSchema = external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), IncidentDetailSchema);
+
+const WEATHER_CONDITION_TYPES = [ "clear", "partly_cloudy", "overcast", "light_rain", "heavy_rain", "storm", "snow", "fog" ];
+
+const WeatherConditionTypeEnum = external_z_namespaceObject.z.enum(WEATHER_CONDITION_TYPES);
+
+const WeatherConditionSchema = external_z_namespaceObject.z.object({
+  type: WeatherConditionTypeEnum,
+  label: external_z_namespaceObject.z.string(),
+  description: external_z_namespaceObject.z.string()
+});
+
+const WeatherTemperatureSchema = external_z_namespaceObject.z.object({
+  minC: external_z_namespaceObject.z.number(),
+  maxC: external_z_namespaceObject.z.number()
+});
+
+const WeatherDaySchema = external_z_namespaceObject.z.object({
+  condition: WeatherConditionSchema,
+  temperature: WeatherTemperatureSchema,
+  precipitationChance: external_z_namespaceObject.z.number().min(0).max(1),
+  humidity: external_z_namespaceObject.z.number().min(0).max(1),
+  windLevel: external_z_namespaceObject.z.number().min(0),
+  narrative: external_z_namespaceObject.z.string()
+});
+
+const WeatherRuntimeSchema = external_z_namespaceObject.z.object({
+  generatedAtISO: external_z_namespaceObject.z.string(),
+  anchorDayISO: external_z_namespaceObject.z.string(),
+  days: external_z_namespaceObject.z.array(WeatherDaySchema).min(1)
+});
+
+const MapSizeSchema = external_z_namespaceObject.z.object({
+  width: external_z_namespaceObject.z.number(),
+  height: external_z_namespaceObject.z.number()
+});
+
+const MapPositionSchema = external_z_namespaceObject.z.object({
+  x: external_z_namespaceObject.z.number(),
+  y: external_z_namespaceObject.z.number()
+});
+
+const MapLeafSchema = external_z_namespaceObject.z.object({
+  pos: MapPositionSchema,
+  htmlEle: external_z_namespaceObject.z.string(),
+  aliases: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()).default([])
+}).passthrough();
+
+const MapTreeSchema = external_z_namespaceObject.z.lazy(() => external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), external_z_namespaceObject.z.union([ MapLeafSchema, MapTreeSchema ])));
+
+const MapGraphSchema = external_z_namespaceObject.z.object({
+  mapSize: MapSizeSchema,
+  tree: MapTreeSchema,
+  edges: external_z_namespaceObject.z.array(PreprocessStringifiedObject(external_z_namespaceObject.z.object({
+    a: external_z_namespaceObject.z.string(),
+    b: external_z_namespaceObject.z.string()
+  }))).optional(),
+  aliases: external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), external_z_namespaceObject.z.array(external_z_namespaceObject.z.string())).optional()
+});
+
+const WORLD_DEFAULTS = {
+  fallbackPlace: "Đền Hakurei",
+  mainStoryTag: "gensokyo"
+};
+
+const WorldSchema = external_z_namespaceObject.z.object({
+  map_graph: MapGraphSchema.optional(),
+  fallbackPlace: external_z_namespaceObject.z.string().default(WORLD_DEFAULTS.fallbackPlace)
+}).passthrough();
+
+const timeSchema = external_z_namespaceObject.z.object({
+  timeProgress: external_z_namespaceObject.z.number()
+}).passthrough();
+
+const IncidentRuntimeInfoSchema = external_z_namespaceObject.z.object({
+  name: external_z_namespaceObject.z.string(),
+  detail: external_z_namespaceObject.z.string(),
+  solver: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()),
+  mainLoc: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()),
+  isFinished: external_z_namespaceObject.z.boolean(),
+  raw: IncidentDetailSchema
+});
+
+const runtime_ActionSchema = external_z_namespaceObject.z.object({
+  do: external_z_namespaceObject.z.string(),
+  to: external_z_namespaceObject.z.string().optional(),
+  from: external_z_namespaceObject.z.string().optional(),
+  source: external_z_namespaceObject.z.string().optional()
+});
+
+const IncidentSchema = external_z_namespaceObject.z.object({
+  decision: external_z_namespaceObject.z.enum([ "continue", "start_new", "daily" ]),
+  current: IncidentRuntimeInfoSchema.optional(),
+  spawn: IncidentRuntimeInfoSchema.optional(),
+  remainingCooldown: external_z_namespaceObject.z.number().optional(),
+  isIncidentActive: external_z_namespaceObject.z.boolean()
+});
+
+const CurrentFestivalInfoSchema = external_z_namespaceObject.z.object({
+  name: external_z_namespaceObject.z.string(),
+  host: external_z_namespaceObject.z.string(),
+  customs: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()),
+  month: external_z_namespaceObject.z.number(),
+  start_day: external_z_namespaceObject.z.number(),
+  end_day: external_z_namespaceObject.z.number()
+});
+
+const NextFestivalInfoSchema = CurrentFestivalInfoSchema.extend({
+  days_until: external_z_namespaceObject.z.number()
+});
+
+const FestivalSchema = external_z_namespaceObject.z.object({
+  ongoing: external_z_namespaceObject.z.boolean(),
+  upcoming: external_z_namespaceObject.z.boolean(),
+  current: CurrentFestivalInfoSchema.nullable(),
+  next: NextFestivalInfoSchema.nullable()
+});
+
+const CharacterDistributionSchema = external_z_namespaceObject.z.object({
+  playerLocation: external_z_namespaceObject.z.string().nullable(),
+  npcByLocation: external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()))
+});
+
+const CharacterRuntimeSchema = external_z_namespaceObject.z.object({
+  name: external_z_namespaceObject.z.string().optional(),
+  affectionStage: AffectionStageWithForgetSchema.optional(),
+  decision: runtime_ActionSchema.optional(),
+  companionDecision: runtime_ActionSchema.optional()
+});
+
+const BfsPathSchema = external_z_namespaceObject.z.object({
+  hops: external_z_namespaceObject.z.number(),
+  steps: external_z_namespaceObject.z.array(external_z_namespaceObject.z.object({
+    from: external_z_namespaceObject.z.string(),
+    to: external_z_namespaceObject.z.string()
+  }))
+});
+
+const RouteSchema = external_z_namespaceObject.z.object({
+  destination: external_z_namespaceObject.z.string(),
+  path: BfsPathSchema
+});
+
+const RouteInfoSchema = external_z_namespaceObject.z.object({
+  candidates: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()),
+  routes: external_z_namespaceObject.z.array(RouteSchema)
+});
+
+const FullMapLeafSchema = MapLeafSchema.extend({
+  name: external_z_namespaceObject.z.string()
+});
+
+const AreaRuntimeInfoSchema = external_z_namespaceObject.z.object({
+  graph: external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), external_z_namespaceObject.z.boolean())),
+  legal_locations: external_z_namespaceObject.z.array(FullMapLeafSchema),
+  neighbors: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()),
+  loadArea: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()),
+  route: RouteInfoSchema,
+  mapSize: MapSizeSchema.optional()
+});
+
+const RuntimeSchema = external_z_namespaceObject.z.object({
+  incident: IncidentSchema.optional(),
+  clock: ClockSchema.optional(),
+  weather: WeatherRuntimeSchema.optional(),
+  area: AreaRuntimeInfoSchema.optional(),
+  festival: FestivalSchema.optional(),
+  characterDistribution: CharacterDistributionSchema.optional(),
+  character: external_z_namespaceObject.z.object({
+    chars: external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), CharacterRuntimeSchema),
+    partitions: external_z_namespaceObject.z.object({
+      coLocated: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()),
+      remote: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string())
+    }),
+    mentionedCharIds: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()).optional()
+  }).optional(),
+  characterLog: external_z_namespaceObject.z.object({}).passthrough().optional(),
+  characterSettings: CharacterSettingsMapSchema.optional(),
+  snapshots: external_z_namespaceObject.z.array(QueryResultItemSchema).optional(),
+  ayaNews: AyaNewsSchema.optional()
+});
+
+const UserSchema = external_z_namespaceObject.z.object({
+  Họ_tên: external_z_namespaceObject.z.string().nullable(),
+  Danh_tính: external_z_namespaceObject.z.string().nullable(),
+  Giới_tính: external_z_namespaceObject.z.string().nullable(),
+  Tuổi: external_z_namespaceObject.z.string().nullable(),
+  Năng_lực_đặc_biệt: external_z_namespaceObject.z.string().nullable(),
+  Khu_vực_hiện_tại: external_z_namespaceObject.z.string().nullable(),
+  Khu_vực_cư_trú: external_z_namespaceObject.z.string().nullable(),
+  Trải_nghiệm_quan_trọng: external_z_namespaceObject.z.union([ external_z_namespaceObject.z.string(), external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()) ]).optional().nullable(),
+  Quan_hệ_nhân_mạch: external_z_namespaceObject.z.union([ external_z_namespaceObject.z.string(), external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()) ]).optional().nullable()
+});
+
+const USER_FIELDS = {
+  name: "Họ_tên",
+  identity: "Danh_tính",
+  gender: "Giới_tính",
+  age: "Tuổi",
+  abilities: "Năng_lực_đặc_biệt",
+  currentLocation: "Khu_vực_hiện_tại",
+  home: "Khu_vực_cư_trú",
+  events: "Trải_nghiệm_quan_trọng",
+  relationships: "Quan_hệ_nhân_mạch"
+};
+
+const logger = new Logger("Starter/utils/eraWriter");
+
+function updateEraVariable(path, value) {
+  const funcName = "updateEraVariable";
+  if (!path || typeof path !== "string") {
+    logger.warn(funcName, "Gọi thất bại: path không hợp lệ.", {
+      path
+    });
+    return;
+  }
+  const eventData = {
+    path,
+    value
+  };
+  try {
+    logger.debug(funcName, `Chuẩn bị gửi sự kiện era:updateByPath`, eventData);
+    eventEmit("era:updateByPath", eventData);
+  } catch (e) {
+    logger.error(funcName, "Gặp ngoại lệ khi gửi sự kiện era:updateByPath", e);
+  }
+}
+
+const CharacterProfilevue_type_script_setup_true_lang_ts_hoisted_1 = {
+  id: "character-profile"
+};
+
+const _hoisted_2 = {
+  class: "grid-2 grid"
+};
+
+const _hoisted_3 = {
+  class: "row"
+};
+
+const _hoisted_4 = {
+  class: "inline"
+};
+
+const _hoisted_5 = {
+  class: "inline"
+};
+
+const _hoisted_6 = {
+  class: "inline"
+};
+
+const _hoisted_7 = {
+  class: "inline"
+};
+
+const _hoisted_8 = {
+  class: "grid-2 grid"
+};
+
+const _hoisted_9 = [ "value" ];
+
+const _hoisted_10 = [ "value" ];
+
+const _hoisted_11 = {
+  class: "grid"
+};
+
+const CharacterProfilevue_type_script_setup_true_lang_ts = (0, external_Vue_namespaceObject.defineComponent)({
+  __name: "CharacterProfile",
+  props: {
+    detail: {}
+  },
+  setup(__props) {
+    const props = __props;
+    const getDefaultUserData = () => ({
+      Họ_tên: "",
+      Danh_tính: "",
+      Giới_tính: "Chưa rõ",
+      Tuổi: "",
+      Năng_lực_đặc_biệt: "",
+      Khu_vực_hiện_tại: "",
+      Khu_vực_cư_trú: "",
+      Trải_nghiệm_quan_trọng: "",
+      Quan_hệ_nhân_mạch: ""
+    });
+    const userData = (0, external_Vue_namespaceObject.ref)(getDefaultUserData());
+    const otherGender = (0, external_Vue_namespaceObject.ref)("");
+    const parsedRuntime = (0, external_Vue_namespaceObject.computed)(() => {
+      if (!props.detail || !props.detail.runtime) return null;
+      const parseResult = RuntimeSchema.safeParse(props.detail.runtime);
+      if (parseResult.success) {
+        return parseResult.data;
+      }
+      console.error("CharacterProfile: Phân tích dữ liệu runtime thất bại", parseResult.error);
+      return null;
+    });
+    const legalLocations = (0, external_Vue_namespaceObject.computed)(() => {
+      const locations = parsedRuntime.value?.area?.legal_locations;
+      if (!locations) return [];
+      return locations.map(loc => loc.name).sort((a, b) => a.localeCompare(b, "zh-Hans"));
+    });
+    (0, external_Vue_namespaceObject.watch)(() => props.detail, newDetail => {
+      if (newDetail && newDetail.statWithoutMeta && newDetail.statWithoutMeta.user) {
+        const result = UserSchema.safeParse(newDetail.statWithoutMeta.user);
+        if (result.success) {
+          userData.value = {
+            ...getDefaultUserData(),
+            ...result.data
+          };
+          const standardGenders = [ "Chưa rõ", "Nam", "Nữ" ];
+          if (userData.value.Giới_tính && !standardGenders.includes(userData.value.Giới_tính)) {
+            otherGender.value = userData.value.Giới_tính;
+            userData.value.Giới_tính = "Khác";
+          }
+        } else {
+          console.error("【CharacterProfile】Phân tích dữ liệu người dùng thất bại:", result.error);
+          userData.value = getDefaultUserData();
+        }
+      }
+    }, {
+      immediate: true,
+      deep: true
+    });
+    function fillDemo() {
+      userData.value = {
+        Họ_tên: "{{user}}",
+        Danh_tính: "Người ngoại giới",
+        Giới_tính: "Chưa rõ",
+        Tuổi: "18",
+        Khu_vực_hiện_tại: "Đền Hakurei",
+        Khu_vực_cư_trú: "Đền Hakurei",
+        Quan_hệ_nhân_mạch: "Chưa có",
+        Năng_lực_đặc_biệt: "Năng lực mức độ đi bộ trên mặt đất",
+        Trải_nghiệm_quan_trọng: "Vì lý do không rõ, đã đến Ảo Tưởng Hương"
+      };
+      otherGender.value = "";
+    }
+    async function writeUserToMVU() {
+      const finalUserData = (0, external_namespaceObject.cloneDeep)(userData.value);
+      if (finalUserData.Giới_tính === "Khác") {
+        finalUserData.Giới_tính = otherGender.value.trim() || "Chưa rõ";
+      }
+      const userObj = {
+        Họ_tên: finalUserData.Họ_tên || "Nhân vật chính",
+        Giới_tính: finalUserData.Giới_tính || "Chưa rõ",
+        Tuổi: finalUserData.Tuổi ? String(finalUserData.Tuổi) : "Chưa rõ",
+        Quan_hệ_nhân_mạch: finalUserData.Quan_hệ_nhân_mạch || "Chưa có",
+        Năng_lực_đặc_biệt: finalUserData.Năng_lực_đặc_biệt || "Năng lực mức độ đi bộ trên mặt đất",
+        Danh_tính: finalUserData.Danh_tính || "Người ngoại giới",
+        Khu_vực_hiện_tại: finalUserData.Khu_vực_hiện_tại || "Đền Hakurei",
+        Khu_vực_cư_trú: finalUserData.Khu_vực_cư_trú || "Chưa rõ",
+        Trải_nghiệm_quan_trọng: finalUserData.Trải_nghiệm_quan_trọng || "Vì lý do không rõ, đã đến Ảo Tưởng Hương"
+      };
+      try {
+        for (const [key, value] of Object.entries(userObj)) {
+          updateEraVariable(`user.${key}`, value);
+        }
+        alert("Dữ liệu nhân vật đã gửi yêu cầu cập nhật!");
+      } catch (e) {
+        alert("【Thiết lập/Ghi lại】 Lỗi: " + String(e));
+      }
+    }
+    return (_ctx, _cache) => ((0, external_Vue_namespaceObject.openBlock)(), (0, external_Vue_namespaceObject.createElementBlock)("div", CharacterProfilevue_type_script_setup_true_lang_ts_hoisted_1, [ _cache[28] || (_cache[28] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("h2", null, "Hồ sơ nhân vật", -1)), (0, external_Vue_namespaceObject.createElementVNode)("div", _hoisted_2, [ (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[13] || (_cache[13] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "u_name"
+    }, "Họ tên", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      id: "u_name",
+      "onUpdate:modelValue": _cache[0] || (_cache[0] = $event => userData.value.Họ_tên = $event),
+      type: "text",
+      placeholder: "Ví dụ: Hakurei XX"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelText, userData.value.Họ_tên ] ]) ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[14] || (_cache[14] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "u_identity"
+    }, "Danh tính", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      id: "u_identity",
+      "onUpdate:modelValue": _cache[1] || (_cache[1] = $event => userData.value.Danh_tính = $event),
+      type: "text",
+      placeholder: "Ví dụ: Khách ngoại giới / Cư dân / Tu tập Miko"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelText, userData.value.Danh_tính ] ]) ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[19] || (_cache[19] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", null, "Giới tính", -1)), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", _hoisted_3, [ (0, external_Vue_namespaceObject.createElementVNode)("label", _hoisted_4, [ (0, 
+    external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      "onUpdate:modelValue": _cache[2] || (_cache[2] = $event => userData.value.Giới_tính = $event),
+      type: "radio",
+      name: "u_gender",
+      value: "Chưa rõ"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelRadio, userData.value.Giới_tính ] ]), _cache[15] || (_cache[15] = (0, 
+    external_Vue_namespaceObject.createTextVNode)(" Chưa rõ", -1)) ]), (0, external_Vue_namespaceObject.createElementVNode)("label", _hoisted_5, [ (0, 
+    external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      "onUpdate:modelValue": _cache[3] || (_cache[3] = $event => userData.value.Giới_tính = $event),
+      type: "radio",
+      name: "u_gender",
+      value: "Nam"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelRadio, userData.value.Giới_tính ] ]), _cache[16] || (_cache[16] = (0, 
+    external_Vue_namespaceObject.createTextVNode)(" Nam", -1)) ]), (0, external_Vue_namespaceObject.createElementVNode)("label", _hoisted_6, [ (0, 
+    external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => userData.value.Giới_tính = $event),
+      type: "radio",
+      name: "u_gender",
+      value: "Nữ"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelRadio, userData.value.Giới_tính ] ]), _cache[17] || (_cache[17] = (0, 
+    external_Vue_namespaceObject.createTextVNode)(" Nữ", -1)) ]), (0, external_Vue_namespaceObject.createElementVNode)("label", _hoisted_7, [ (0, 
+    external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      "onUpdate:modelValue": _cache[5] || (_cache[5] = $event => userData.value.Giới_tính = $event),
+      type: "radio",
+      name: "u_gender",
+      value: "Khác"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelRadio, userData.value.Giới_tính ] ]), _cache[18] || (_cache[18] = (0, 
+    external_Vue_namespaceObject.createTextVNode)(" Khác", -1)) ]), userData.value.Giới_tính === "Khác" ? (0, 
+    external_Vue_namespaceObject.withDirectives)(((0, external_Vue_namespaceObject.openBlock)(), 
+    (0, external_Vue_namespaceObject.createElementBlock)("input", {
+      key: 0,
+      "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => otherGender.value = $event),
+      type: "text",
+      placeholder: "Điền khi chọn \"Khác\""
+    }, null, 512)), [ [ external_Vue_namespaceObject.vModelText, otherGender.value ] ]) : (0, 
+    external_Vue_namespaceObject.createCommentVNode)("v-if", true) ]) ]), (0, external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[20] || (_cache[20] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "u_age"
+    }, "Tuổi", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      id: "u_age",
+      "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => userData.value.Tuổi = $event),
+      type: "text",
+      placeholder: "Ví dụ: 18 / Mười bảy tuổi"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelText, userData.value.Tuổi ] ]) ]) ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", _hoisted_8, [ (0, external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[22] || (_cache[22] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "u_home"
+    }, "Khu vực cư trú", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("select", {
+      id: "u_home",
+      "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => userData.value.Khu_vực_cư_trú = $event)
+    }, [ _cache[21] || (_cache[21] = (0, external_Vue_namespaceObject.createElementVNode)("option", {
+      value: "",
+      disabled: ""
+    }, "— Chọn —", -1)), ((0, external_Vue_namespaceObject.openBlock)(true), (0, external_Vue_namespaceObject.createElementBlock)(external_Vue_namespaceObject.Fragment, null, (0, 
+    external_Vue_namespaceObject.renderList)(legalLocations.value, place => ((0, external_Vue_namespaceObject.openBlock)(), 
+    (0, external_Vue_namespaceObject.createElementBlock)("option", {
+      key: place,
+      value: place
+    }, (0, external_Vue_namespaceObject.toDisplayString)(place), 9, _hoisted_9))), 128)) ], 512), [ [ external_Vue_namespaceObject.vModelSelect, userData.value.Khu_vực_cư_trú ] ]) ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[24] || (_cache[24] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "u_current"
+    }, "Khu vực hiện tại", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("select", {
+      id: "u_current",
+      "onUpdate:modelValue": _cache[9] || (_cache[9] = $event => userData.value.Khu_vực_hiện_tại = $event)
+    }, [ _cache[23] || (_cache[23] = (0, external_Vue_namespaceObject.createElementVNode)("option", {
+      value: "",
+      disabled: ""
+    }, "— Chọn —", -1)), ((0, external_Vue_namespaceObject.openBlock)(true), (0, external_Vue_namespaceObject.createElementBlock)(external_Vue_namespaceObject.Fragment, null, (0, 
+    external_Vue_namespaceObject.renderList)(legalLocations.value, place => ((0, external_Vue_namespaceObject.openBlock)(), 
+    (0, external_Vue_namespaceObject.createElementBlock)("option", {
+      key: place,
+      value: place
+    }, (0, external_Vue_namespaceObject.toDisplayString)(place), 9, _hoisted_10))), 128)) ], 512), [ [ external_Vue_namespaceObject.vModelSelect, userData.value.Khu_vực_hiện_tại ] ]) ]) ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", _hoisted_11, [ (0, external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[25] || (_cache[25] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "u_relationships"
+    }, "Quan hệ nhân mạch", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      id: "u_relationships",
+      "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => userData.value.Quan_hệ_nhân_mạch = $event),
+      type: "text",
+      placeholder: "Ví dụ: Quen biết Reimu / Tình cờ gặp Marisa"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelText, userData.value.Quan_hệ_nhân_mạch ] ]) ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[26] || (_cache[26] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "u_ability"
+    }, "Năng lực đặc biệt", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      id: "u_ability",
+      "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => userData.value.Năng_lực_đặc_biệt = $event),
+      type: "text",
+      placeholder: "Ví dụ: Năng lực mức độ đi bộ trên mặt đất"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelText, userData.value.Năng_lực_đặc_biệt ] ]) ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[27] || (_cache[27] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "u_notes"
+    }, "Trải nghiệm quan trọng", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("textarea", {
+      id: "u_notes",
+      "onUpdate:modelValue": _cache[12] || (_cache[12] = $event => userData.value.Trải_nghiệm_quan_trọng = $event),
+      placeholder: "Vì lý do không rõ, đã đến Ảo Tưởng Hương"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelText, userData.value.Trải_nghiệm_quan_trọng ] ]) ]) ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", {
+      class: "btn-bar"
+    }, [ (0, external_Vue_namespaceObject.createElementVNode)("button", {
+      onClick: writeUserToMVU
+    }, "Ghi thiết lập nhân vật vào biến"), (0, external_Vue_namespaceObject.createElementVNode)("button", {
+      class: "muted-btn",
+      onClick: fillDemo
+    }, "Điền mẫu") ]) ]));
+  }
+});
+
+var exportHelper = __webpack_require__(235);
+
+const CharacterProfile_exports_ = (0, exportHelper.A)(CharacterProfilevue_type_script_setup_true_lang_ts, [ [ "__scopeId", "data-v-3fd023b2" ] ]);
+
+const CharacterProfile = CharacterProfile_exports_;
+
+const worldbook_logger = new Logger("Starter/utils/worldbook");
+
+async function getMainWorldbookName() {
+  const funcName = "getMainWorldbookName";
+  try {
+    const charWorldbooks = await getCharWorldbookNames("current");
+    const wbName = charWorldbooks?.primary;
+    if (!wbName) {
+      worldbook_logger.warn(funcName, "Không tìm thấy World Book chính (primary worldbook) liên kết với card hiện tại.");
+      return null;
+    }
+    return wbName;
+  } catch (error) {
+    worldbook_logger.error(funcName, `Lấy tên World Book chính thất bại: ${error.message}`, error);
+    return null;
+  }
+}
+
+async function readFromWorldbook(entryName) {
+  const funcName = "readFromWorldbook";
+  const worldbookName = await getMainWorldbookName();
+  if (!worldbookName) return null;
+  try {
+    const entries = await getWorldbook(worldbookName);
+    const targetEntry = entries.find(entry => entry.name === entryName);
+    if (targetEntry) {
+      worldbook_logger.log(funcName, `Đã tải mục từ World Book "${entryName}"。`);
+    } else {
+      worldbook_logger.log(funcName, `Không tìm thấy mục trong World Book "${entryName}"。`);
+    }
+    return targetEntry ? targetEntry.content : null;
+  } catch (error) {
+    worldbook_logger.error(funcName, `Đọc mục từ World Book "${entryName}" thất bại: ${error.message}`, error);
+    return null;
+  }
+}
+
+async function writeToWorldbook(entryName, content) {
+  const funcName = "writeToWorldbook";
+  const worldbookName = await getMainWorldbookName();
+  if (!worldbookName) return;
+  try {
+    const entries = await getWorldbook(worldbookName);
+    const existingEntry = entries.find(entry => entry.name === entryName);
+    if (existingEntry) {
+      await updateWorldbookWith(worldbookName, currentEntries => {
+        const entryToUpdate = currentEntries.find(e => e.uid === existingEntry.uid);
+        if (entryToUpdate) {
+          entryToUpdate.content = content;
+        }
+        return currentEntries;
+      });
+      worldbook_logger.log(funcName, `Mục "${entryName}" đã được cập nhật.`);
+    } else {
+      await createWorldbookEntries(worldbookName, [ {
+        name: entryName,
+        content,
+        enabled: true
+      } ], {
+        render: "immediate"
+      });
+      worldbook_logger.log(funcName, `Mục "${entryName}" đã được tạo và lưu.`);
+    }
+  } catch (error) {
+    worldbook_logger.error(funcName, `Ghi mục vào World Book "${entryName}" thất bại: ${error.message}`, error);
+  }
+}
+
+const ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_1 = {
+  id: "extra-world-settings",
+  class: "rounded-lg border-2 border-gray-400 p-4"
+};
+
+const ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_2 = [ "disabled" ];
+
+const ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_3 = {
+  class: "mt-2 flex justify-end gap-2"
+};
+
+const ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_4 = [ "disabled" ];
+
+const ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_5 = [ "disabled" ];
+
+const ENTRY_NAME = "Thiết lập thế giới bổ sung";
+
+const ExtraWorldSettingsvue_type_script_setup_true_lang_ts = (0, external_Vue_namespaceObject.defineComponent)({
+  __name: "ExtraWorldSettings",
+  setup(__props) {
+    const extraLore = (0, external_Vue_namespaceObject.ref)("");
+    const isLoading = (0, external_Vue_namespaceObject.ref)(false);
+    const isSaving = (0, external_Vue_namespaceObject.ref)(false);
+    async function loadExtra() {
+      isLoading.value = true;
+      const content = await readFromWorldbook(ENTRY_NAME);
+      if (content !== null) {
+        extraLore.value = content;
+      }
+      isLoading.value = false;
+    }
+    async function saveExtra() {
+      isSaving.value = true;
+      await writeToWorldbook(ENTRY_NAME, extraLore.value);
+      isSaving.value = false;
+    }
+    (0, external_Vue_namespaceObject.onMounted)(() => {
+      loadExtra();
+    });
+    return (_ctx, _cache) => ((0, external_Vue_namespaceObject.openBlock)(), (0, external_Vue_namespaceObject.createElementBlock)("div", ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_1, [ _cache[1] || (_cache[1] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("h2", {
+      class: "mb-2 text-xl font-bold"
+    }, "Thiết lập thế giới bổ sung", -1)), _cache[2] || (_cache[2] = (0, external_Vue_namespaceObject.createElementVNode)("div", {
+      class: "text-sm text-gray-600"
+    }, [ (0, external_Vue_namespaceObject.createTextVNode)(" Nội dung khu vực này sẽ được lưu thành mục World Book "), (0, 
+    external_Vue_namespaceObject.createElementVNode)("code", {
+      class: "text-xs font-semibold"
+    }, "“Thiết lập thế giới bổ sung”"), (0, external_Vue_namespaceObject.createTextVNode)(" của "), (0, external_Vue_namespaceObject.createElementVNode)("code", {
+      class: "text-xs font-semibold"
+    }, "content"), (0, external_Vue_namespaceObject.createTextVNode)(" để bổ sung bối cảnh thế giới/luật tạm thời. ") ], -1)), (0, 
+    external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("textarea", {
+      "onUpdate:modelValue": _cache[0] || (_cache[0] = $event => extraLore.value = $event),
+      class: "mt-2 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm",
+      rows: "4",
+      placeholder: "Viết thiết lập bổ sung cho Ảo Tưởng Hương tại đây. Nên bắt đầu bằng '【Thiết lập thế giới bổ sung】', ví dụ: 【Thiết lập thế giới bổ sung】 Mọi người ở Ảo Tưởng Hương đều trở nên nghèo như Reimu!",
+      disabled: isLoading.value
+    }, null, 8, ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_2), [ [ external_Vue_namespaceObject.vModelText, extraLore.value ] ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_3, [ (0, 
+    external_Vue_namespaceObject.createElementVNode)("button", {
+      class: "muted-btn",
+      disabled: isLoading.value || isSaving.value,
+      onClick: loadExtra
+    }, (0, external_Vue_namespaceObject.toDisplayString)(isLoading.value ? "Đang tải..." : "Tải từ World Book"), 9, ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_4), (0, 
+    external_Vue_namespaceObject.createElementVNode)("button", {
+      disabled: isLoading.value || isSaving.value,
+      onClick: saveExtra
+    }, (0, external_Vue_namespaceObject.toDisplayString)(isSaving.value ? "Đang lưu..." : "Lưu vào World Book"), 9, ExtraWorldSettingsvue_type_script_setup_true_lang_ts_hoisted_5) ]) ]));
+  }
+});
+
+const ExtraWorldSettings_exports_ = (0, exportHelper.A)(ExtraWorldSettingsvue_type_script_setup_true_lang_ts, [ [ "__scopeId", "data-v-fb630866" ] ]);
+
+const ExtraWorldSettings = ExtraWorldSettings_exports_;
+
+const CharacterCacheSchema = external_z_namespaceObject.z.object({
+  visit: external_z_namespaceObject.z.object({
+    cooling: external_z_namespaceObject.z.boolean().optional()
+  }).optional()
+});
+
+const IncidentCacheSchema = external_z_namespaceObject.z.object({
+  incidentCooldownAnchor: external_z_namespaceObject.z.number().nullable().optional()
+});
+
+const CacheSchema = external_z_namespaceObject.z.object({
+  time: external_z_namespaceObject.z.object({
+    clockAck: ClockAckSchema.optional()
+  }).optional().default({}),
+  incident: IncidentCacheSchema.optional().default({}),
+  character: external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), CharacterCacheSchema).optional().default({}),
+  timeChatMkSync: TimeChatMkSyncCacheSchema.optional().default({})
+});
+
+const CharacterSchema = external_z_namespaceObject.z.object({
+  name: external_z_namespaceObject.z.string(),
+  pic: external_z_namespaceObject.z.string().optional(),
+  Độ_hảo_cảm: external_z_namespaceObject.z.number(),
+  Khu_vực_hiện_tại: external_z_namespaceObject.z.string().nullable(),
+  Khu_vực_cư_trú: external_z_namespaceObject.z.string().nullable(),
+  affectionStages: external_z_namespaceObject.z.array(PreprocessStringifiedObject(AffectionStageWithForgetSchema)).default([]),
+  specials: EntryListPreprocessSchema.default([]),
+  routine: EntryListPreprocessSchema.default([]),
+  Mục_tiêu: external_z_namespaceObject.z.string().optional(),
+  Tình_trạng_cơ_thể: external_z_namespaceObject.z.string().optional(),
+  Suy_nghĩ_nội_tâm: external_z_namespaceObject.z.string().optional()
+});
+
+const CharsSchema = external_z_namespaceObject.z.object({
+  $meta: external_z_namespaceObject.z.any().optional()
+}).catchall(CharacterSchema);
+
+const CHARACTER_FIELDS = {
+  affection: "Độ_hảo_cảm",
+  currentLocation: "Khu_vực_hiện_tại",
+  home: "Khu_vực_cư_trú"
+};
+
+const UiConfigSchema = external_z_namespaceObject.z.object({
+  theme: external_z_namespaceObject.z.enum([ "light", "dark" ]).default("light"),
+  mainFontPercent: external_z_namespaceObject.z.number().default(100),
+  fontScaleStepPct: external_z_namespaceObject.z.number().default(10)
+}).passthrough();
+
+const IncidentPoolItemSchema = external_z_namespaceObject.z.object({
+  name: external_z_namespaceObject.z.string(),
+  detail: external_z_namespaceObject.z.string(),
+  mainLoc: external_z_namespaceObject.z.union([ external_z_namespaceObject.z.string(), external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()) ])
+});
+
+const IncidentConfigSchema = external_z_namespaceObject.z.object({
+  cooldownMinutes: external_z_namespaceObject.z.number(),
+  forceTrigger: external_z_namespaceObject.z.boolean(),
+  isRandomPool: external_z_namespaceObject.z.boolean(),
+  pool: external_z_namespaceObject.z.array(PreprocessStringifiedObject(IncidentPoolItemSchema)).optional(),
+  randomCore: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()).optional(),
+  randomType: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()).optional()
+});
+
+const FlagHistoryLimitSchema = external_z_namespaceObject.z.number().int().min(0);
+
+const PeriodFlagHistoryLimitSchema = external_z_namespaceObject.z.object({
+  newDawn: FlagHistoryLimitSchema,
+  newMorning: FlagHistoryLimitSchema,
+  newNoon: FlagHistoryLimitSchema,
+  newAfternoon: FlagHistoryLimitSchema,
+  newDusk: FlagHistoryLimitSchema,
+  newNight: FlagHistoryLimitSchema,
+  newFirstHalfNight: FlagHistoryLimitSchema,
+  newSecondHalfNight: FlagHistoryLimitSchema
+}).partial().default({});
+
+const SeasonFlagHistoryLimitSchema = external_z_namespaceObject.z.object({
+  newSpring: FlagHistoryLimitSchema,
+  newSummer: FlagHistoryLimitSchema,
+  newAutumn: FlagHistoryLimitSchema,
+  newWinter: FlagHistoryLimitSchema
+}).partial().default({});
+
+const TimeFlagHistoryLimitsSchema = external_z_namespaceObject.z.object({
+  newPeriod: FlagHistoryLimitSchema.optional(),
+  newDay: FlagHistoryLimitSchema.optional(),
+  newWeek: FlagHistoryLimitSchema.optional(),
+  newMonth: FlagHistoryLimitSchema.optional(),
+  newSeason: FlagHistoryLimitSchema.optional(),
+  newYear: FlagHistoryLimitSchema.optional(),
+  period: PeriodFlagHistoryLimitSchema.optional(),
+  season: SeasonFlagHistoryLimitSchema.optional()
+}).default({});
+
+const TimeConfigSchema = external_z_namespaceObject.z.object({
+  epochISO: external_z_namespaceObject.z.string().datetime({
+    message: "Định dạng ngày giờ ISO 8601 không hợp lệ"
+  }),
+  flagHistoryLimits: TimeFlagHistoryLimitsSchema
+}).passthrough();
+
+const DEFAULT_TIME_CONFIG = {
+  epochISO: "2025-10-24T06:00:00+09:00",
+  flagHistoryLimits: {}
+};
+
+const AffectionConfigSchema = external_z_namespaceObject.z.object({
+  affectionStages: external_z_namespaceObject.z.array(PreprocessStringifiedObject(AffectionStageWithForgetSchema)),
+  loveThreshold: external_z_namespaceObject.z.number().optional(),
+  hateThreshold: external_z_namespaceObject.z.number().optional()
+});
+
+const ConfigSchema = external_z_namespaceObject.z.object({
+  affection: AffectionConfigSchema.optional(),
+  specials: EntryListPreprocessSchema.default([]),
+  routine: EntryListPreprocessSchema.default([]),
+  time: TimeConfigSchema.default(DEFAULT_TIME_CONFIG),
+  incident: IncidentConfigSchema.optional(),
+  ui: UiConfigSchema,
+  mainBodyTags: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()).optional(),
+  excludeBodyTags: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()).optional()
+}).passthrough();
+
+const FestivalDefinitionSchema = external_z_namespaceObject.z.object({
+  month: external_z_namespaceObject.z.number(),
+  start_day: external_z_namespaceObject.z.number(),
+  end_day: external_z_namespaceObject.z.number(),
+  name: external_z_namespaceObject.z.string(),
+  type: external_z_namespaceObject.z.string(),
+  customs: external_z_namespaceObject.z.array(external_z_namespaceObject.z.string()),
+  importance: external_z_namespaceObject.z.number(),
+  host: external_z_namespaceObject.z.string()
+});
+
+const festival_FestivalSchema = FestivalDefinitionSchema.extend({
+  id: external_z_namespaceObject.z.string().optional()
+});
+
+const FestivalsListSchema = external_z_namespaceObject.z.record(external_z_namespaceObject.z.string(), PreprocessStringifiedObject(FestivalDefinitionSchema)).default({});
+
+const StatSchema = external_z_namespaceObject.z.object({
+  config: ConfigSchema,
+  chars: CharsSchema,
+  user: UserSchema,
+  world: WorldSchema.optional(),
+  time: timeSchema,
+  cache: CacheSchema.optional(),
+  incidents: IncidentsSchema.default({}),
+  festivals_list: FestivalsListSchema,
+  Phụ_thêm_chính_văn: external_z_namespaceObject.z.string().optional(),
+  weather: external_z_namespaceObject.z.string().optional(),
+  AyaNews: external_z_namespaceObject.z.string().optional()
+});
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_1 = {
+  id: "start-time-settings",
+  class: "rounded-lg border-2 border-gray-400 p-4"
+};
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_2 = {
+  key: 0,
+  class: "grid grid-cols-2 gap-4"
+};
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_3 = {
+  class: "mt-4 flex items-center justify-between"
+};
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_4 = {
+  class: "text-sm"
+};
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_5 = {
+  class: "font-mono"
+};
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_6 = {
+  class: "flex gap-2"
+};
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_7 = [ "disabled" ];
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_8 = [ "disabled" ];
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_9 = {
+  key: 1,
+  class: "mt-4 text-center"
+};
+
+const StartTimeSettingsvue_type_script_setup_true_lang_ts = (0, external_Vue_namespaceObject.defineComponent)({
+  __name: "StartTimeSettings",
+  props: {
+    detail: {}
+  },
+  setup(__props) {
+    const props = __props;
+    const epochDate = (0, external_Vue_namespaceObject.ref)("");
+    const epochTime = (0, external_Vue_namespaceObject.ref)("");
+    const originalEpochISO = (0, external_Vue_namespaceObject.ref)("");
+    const parsedStat = (0, external_Vue_namespaceObject.computed)(() => {
+      if (!props.detail || !props.detail.statWithoutMeta) return null;
+      const parseResult = StatSchema.safeParse(props.detail.statWithoutMeta);
+      if (parseResult.success) {
+        return parseResult.data;
+      }
+      console.error("StartTimeSettings: Phân tích dữ liệu stat thất bại", parseResult.error);
+      return null;
+    });
+    (0, external_Vue_namespaceObject.watch)(parsedStat, newStat => {
+      const isoString = newStat?.config?.time?.epochISO;
+      originalEpochISO.value = isoString || "";
+      if (isoString) {
+        try {
+          const date = new Date(isoString);
+          epochDate.value = date.toISOString().split("T")[0];
+          const hours = String(date.getUTCHours()).padStart(2, "0");
+          const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+          epochTime.value = `${hours}:${minutes}`;
+        } catch (e) {
+          console.error("StartTimeSettings: Phân tích dữ liệu epochISO thất bại", e);
+          epochDate.value = "";
+          epochTime.value = "";
+        }
+      } else {
+        epochDate.value = "";
+        epochTime.value = "";
+      }
+    }, {
+      immediate: true,
+      deep: true
+    });
+    const isoFromInputs = (0, external_Vue_namespaceObject.computed)(() => {
+      if (!epochDate.value || !epochTime.value) return null;
+      const isoString = `${epochDate.value}T${epochTime.value}:00.000Z`;
+      const date = new Date(isoString);
+      if (Number.isNaN(date.getTime())) return null;
+      return isoString;
+    });
+    const hasChanges = (0, external_Vue_namespaceObject.computed)(() => !!isoFromInputs.value && isoFromInputs.value !== originalEpochISO.value);
+    const canSave = (0, external_Vue_namespaceObject.computed)(() => hasChanges.value);
+    const canReset = (0, external_Vue_namespaceObject.computed)(() => Boolean(originalEpochISO.value || epochDate.value || epochTime.value));
+    const resetEpochInputs = () => {
+      if (originalEpochISO.value) {
+        try {
+          const date = new Date(originalEpochISO.value);
+          if (Number.isNaN(date.getTime())) throw new Error("Invalid epoch ISO value");
+          epochDate.value = date.toISOString().split("T")[0];
+          const hours = String(date.getUTCHours()).padStart(2, "0");
+          const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+          epochTime.value = `${hours}:${minutes}`;
+          return;
+        } catch (e) {
+          console.error("StartTimeSettings: reset epochISO failed", e);
+        }
+      }
+      epochDate.value = "";
+      epochTime.value = "";
+    };
+    const writeEpochToEra = () => {
+      const isoString = isoFromInputs.value;
+      if (!isoString) {
+        toastr.warning("Ngày chọn không hợp lệ.");
+        return;
+      }
+      if (isoString === originalEpochISO.value) {
+        return;
+      }
+      try {
+        updateEraVariable("config.time.epochISO", isoString);
+        originalEpochISO.value = isoString;
+        toastr.info("Đã sửa ngày mở đầu thành công");
+      } catch (e) {
+        toastr.error("Lỗi ghi dữ liệu" + String(e));
+      }
+    };
+    const epochPreview = (0, external_Vue_namespaceObject.computed)(() => {
+      if (!epochDate.value && !epochTime.value) return "—";
+      return `${epochDate.value || "YYYY-MM-DD"}T${epochTime.value || "HH:mm"}`;
+    });
+    return (_ctx, _cache) => ((0, external_Vue_namespaceObject.openBlock)(), (0, external_Vue_namespaceObject.createElementBlock)("div", StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_1, [ _cache[6] || (_cache[6] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("h2", {
+      class: "mb-2 text-xl font-bold"
+    }, "Thiết lập thời gian ban đầu", -1)), parsedStat.value ? ((0, external_Vue_namespaceObject.openBlock)(), 
+    (0, external_Vue_namespaceObject.createElementBlock)("div", StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_2, [ (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[2] || (_cache[2] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "epoch_date",
+      class: "block text-sm font-medium text-gray-700"
+    }, "Ngày (YYYY-MM-DD)", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, 
+    external_Vue_namespaceObject.createElementVNode)("input", {
+      id: "epoch_date",
+      "onUpdate:modelValue": _cache[0] || (_cache[0] = $event => epochDate.value = $event),
+      type: "date",
+      class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelText, epochDate.value ] ]) ]), (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", null, [ _cache[3] || (_cache[3] = (0, 
+    external_Vue_namespaceObject.createElementVNode)("label", {
+      for: "epoch_time",
+      class: "block text-sm font-medium text-gray-700"
+    }, "Giờ phút (HH:mm)", -1)), (0, external_Vue_namespaceObject.withDirectives)((0, external_Vue_namespaceObject.createElementVNode)("input", {
+      id: "epoch_time",
+      "onUpdate:modelValue": _cache[1] || (_cache[1] = $event => epochTime.value = $event),
+      type: "time",
+      step: "60",
+      class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+    }, null, 512), [ [ external_Vue_namespaceObject.vModelText, epochTime.value ] ]) ]) ])) : (0, 
+    external_Vue_namespaceObject.createCommentVNode)("v-if", true), (0, external_Vue_namespaceObject.createElementVNode)("div", StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_3, [ (0, 
+    external_Vue_namespaceObject.createElementVNode)("div", StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_4, [ _cache[4] || (_cache[4] = (0, 
+    external_Vue_namespaceObject.createTextVNode)(" Xem trước: ", -1)), (0, external_Vue_namespaceObject.createElementVNode)("span", StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_5, (0, 
+    external_Vue_namespaceObject.toDisplayString)(epochPreview.value), 1) ]), (0, external_Vue_namespaceObject.createElementVNode)("div", StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_6, [ (0, 
+    external_Vue_namespaceObject.createElementVNode)("button", {
+      class: (0, external_Vue_namespaceObject.normalizeClass)([ "muted-btn", {
+        "cursor-not-allowed opacity-50": !canReset.value
+      } ]),
+      disabled: !canReset.value,
+      onClick: resetEpochInputs
+    }, " Đọc từ cấu hình ", 10, StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_7), (0, 
+    external_Vue_namespaceObject.createElementVNode)("button", {
+      class: (0, external_Vue_namespaceObject.normalizeClass)({
+        "cursor-not-allowed opacity-50": !canSave.value
+      }),
+      disabled: !canSave.value,
+      onClick: writeEpochToEra
+    }, " Lưu vào cấu hình ", 10, StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_8) ]) ]), !parsedStat.value ? ((0, 
+    external_Vue_namespaceObject.openBlock)(), (0, external_Vue_namespaceObject.createElementBlock)("div", StartTimeSettingsvue_type_script_setup_true_lang_ts_hoisted_9, [ ..._cache[5] || (_cache[5] = [ (0, 
+    external_Vue_namespaceObject.createElementVNode)("p", null, "Đang tải hoặc phân tích dữ liệu thời gian...", -1) ]) ])) : (0, 
+    external_Vue_namespaceObject.createCommentVNode)("v-if", true) ]));
+  }
+});
+
+const StartTimeSettings_exports_ = (0, exportHelper.A)(StartTimeSettingsvue_type_script_setup_true_lang_ts, [ [ "__scopeId", "data-v-42af7a37" ] ]);
+
+const StartTimeSettings = StartTimeSettings_exports_;
+
+const appvue_type_script_setup_true_lang_ts_hoisted_1 = {
+  class: "flex flex-col gap-2"
+};
+
+const appvue_type_script_setup_true_lang_ts_hoisted_2 = {
+  key: 0,
+  class: "flex flex-col gap-2"
+};
+
+const appvue_type_script_setup_true_lang_ts_hoisted_3 = {
+  key: 1,
+  class: "flex items-center justify-center p-4"
+};
+
+const __default__ = {};
+
+const appvue_type_script_setup_true_lang_ts = (0, external_Vue_namespaceObject.defineComponent)({
+  ...__default__,
+  __name: "app",
+  setup(__props, {expose: __expose}) {
+    const runtimeData = (0, external_Vue_namespaceObject.ref)(null);
+    const update = detail => {
+      runtimeData.value = (0, external_namespaceObject.cloneDeep)(detail);
+    };
+    __expose({
+      update
+    });
+    return (_ctx, _cache) => ((0, external_Vue_namespaceObject.openBlock)(), (0, external_Vue_namespaceObject.createElementBlock)("div", appvue_type_script_setup_true_lang_ts_hoisted_1, [ (0, 
+    external_Vue_namespaceObject.createVNode)(StoryButton), runtimeData.value ? ((0, 
+    external_Vue_namespaceObject.openBlock)(), (0, external_Vue_namespaceObject.createElementBlock)("div", appvue_type_script_setup_true_lang_ts_hoisted_2, [ (0, 
+    external_Vue_namespaceObject.createVNode)(CharacterProfile, {
+      detail: runtimeData.value
+    }, null, 8, [ "detail" ]), (0, external_Vue_namespaceObject.createVNode)(StartTimeSettings, {
+      detail: runtimeData.value
+    }, null, 8, [ "detail" ]), (0, external_Vue_namespaceObject.createVNode)(ExtraWorldSettings, {
+      detail: runtimeData.value
+    }, null, 8, [ "detail" ]) ])) : ((0, external_Vue_namespaceObject.openBlock)(), 
+    (0, external_Vue_namespaceObject.createElementBlock)("div", appvue_type_script_setup_true_lang_ts_hoisted_3, [ ..._cache[0] || (_cache[0] = [ (0, 
+    external_Vue_namespaceObject.createElementVNode)("p", null, "Đang chờ sự kiện GSKO:showUI để tải bảng thiết lập...", -1) ]) ])) ]));
+  }
+});
+
+const app_exports_ = appvue_type_script_setup_true_lang_ts;
+
+const Starter_app = app_exports_;
+
+$(() => {
+  const app = (0, external_Vue_namespaceObject.createApp)(Starter_app).mount("#app");
+  const logger = new Logger("Starter");
+  let lockedMessageId = null;
+  let hasReceivedData = false;
+  let ignoreNextShowUi = false;
+  eventOn("STARTER:IGNORE_NEXT_SHOW_UI", () => {
+    logger.log("event", "Đã nhận chỉ thị, sẽ bỏ qua sự kiện GSKO:showUI tiếp theo.");
+    ignoreNextShowUi = true;
+  });
+  eventOn("GSKO:showUI", detail => {
+    const funcName = "onShowUI";
+    if (ignoreNextShowUi) {
+      ignoreNextShowUi = false;
+      logger.log(funcName, "Theo chỉ thị, đã bỏ qua sự kiện GSKO:showUI lần này.");
+      return;
+    }
+    hasReceivedData = true;
+    const currentEventMessageId = detail?.message_id;
+    if (typeof currentEventMessageId !== "number") {
+      logger.warn(funcName, "Không cung cấp message_id hợp lệ trong sự kiện, không thể làm mới UI.");
+      return;
+    }
+    if (lockedMessageId === null) {
+      lockedMessageId = currentEventMessageId;
+      logger.log(funcName, `UI đã được khóa vào messageId: ${lockedMessageId}`);
+    }
+    if (currentEventMessageId !== lockedMessageId) {
+      logger.log(funcName, `Sự kiện messageId (${currentEventMessageId}) và ID đã khóa (${lockedMessageId}) không khớp, bỏ qua làm mới.`);
+      return;
+    }
+    if (detail) {
+      logger.log(funcName, "Đang sử dụng dữ liệu nhận được để cập nhật App...", detail);
+      app.update(detail);
+    }
+  });
+  setTimeout(() => {
+    if (!hasReceivedData) {
+      logger.log("init", "Chưa nhận được dữ liệu ban đầu, chủ động yêu cầu dữ liệu...");
+      eventEmit("GSKO:requireData");
+    }
+  }, 500);
+});</script><style>@import url(https://fonts.googleapis.com/css2?family=Zhi+Mang+Xing&display=swap);
+@import url(https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap);
+.GensokyoOrigin-Starter-story-container{display:flex;flex-direction:column;gap:10px;width:100%}.GensokyoOrigin-Starter-openingInput{width:100%;min-height:80px;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;line-height:1.5;resize:vertical;background-color:#fcfaf5;color:#333;box-sizing:border-box}.GensokyoOrigin-Starter-openingInput::placeholder{color:#999}.GensokyoOrigin-Starter-openingInput:focus{outline:none;border-color:#8c7b6a;box-shadow:0 0 0 2px rgba(140,123,106,.2)}.GensokyoOrigin-Starter-storyButton{background-color:#4caf50;border:none;color:#fff;padding:10px 20px;text-align:center;text-decoration:none;display:inline-block;font-size:16px;cursor:pointer;border-radius:8px;transition:background-color .3s;width:100%;box-sizing:border-box}.GensokyoOrigin-Starter-storyButton:hover{background-color:#45a049}
+#character-profile[data-v-3fd023b2]{background:var(--paper);border:1px solid var(--line);border-radius:6px;box-shadow:3px 3px 8px rgba(107,90,75,0.2),inset 0 0 10px rgba(255,253,247,0.5);padding:24px;margin:18px 0}#character-profile h2[data-v-3fd023b2]{color:var(--muted);border-bottom:2px solid var(--line);padding-bottom:10px;margin-bottom:20px}#character-profile .grid[data-v-3fd023b2]{display:grid;gap:16px}#character-profile .grid-2[data-v-3fd023b2]{grid-template-columns:1fr 1fr}#character-profile label[data-v-3fd023b2]{font-weight:700;color:var(--muted);display:block;margin-bottom:6px}#character-profile input[type='text'][data-v-3fd023b2],#character-profile textarea[data-v-3fd023b2],#character-profile select[data-v-3fd023b2]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:4px;background:#fcfaf5;color:var(--ink);transition:border-color 0.2s,box-shadow 0.2s,background 0.2s}#character-profile input[type='text'][data-v-3fd023b2]:focus,#character-profile textarea[data-v-3fd023b2]:focus,#character-profile select[data-v-3fd023b2]:focus{border-color:#b59a7a;outline:none;box-shadow:0 0 5px rgba(168,152,131,0.3)}#character-profile textarea[data-v-3fd023b2]{min-height:100px;resize:vertical}#character-profile .row[data-v-3fd023b2]{display:flex;gap:12px;align-items:center;flex-wrap:wrap}#character-profile .row[data-v-3fd023b2]>*{flex:1}#character-profile .inline[data-v-3fd023b2]{display:inline-block;margin-right:12px}#character-profile .btn-bar[data-v-3fd023b2]{display:flex;gap:12px;margin-top:18px}#character-profile button[data-v-3fd023b2]{padding:12px 18px;background:#8c7b6a;color:#fcfaf5;border:1px solid #7a6a5a;border-radius:4px;font-weight:700;cursor:pointer;transition:background 0.2s,border-color 0.2s}#character-profile button[data-v-3fd023b2]:hover{background:#7a6a5a;border-color:#6b5a4b}#character-profile .muted-btn[data-v-3fd023b2]{background:#e9e1d6;color:#5a4f43;border-color:#d3c8b8}#character-profile .muted-btn[data-v-3fd023b2]:hover{background:#dcd1c4}
+
+#extra-world-settings button[data-v-fb630866]{padding:12px 18px;background:#8c7b6a;color:#fcfaf5;border:1px solid #7a6a5a;border-radius:4px;font-weight:700;cursor:pointer;transition:background 0.2s,border-color 0.2s}#extra-world-settings button[data-v-fb630866]:hover{background:#7a6a5a;border-color:#6b5a4b}#extra-world-settings .muted-btn[data-v-fb630866]{background:#e9e1d6;color:#5a4f43;border-color:#d3c8b8}#extra-world-settings .muted-btn[data-v-fb630866]:hover{background:#dcd1c4}
+
+#start-time-settings button[data-v-42af7a37]{padding:12px 18px;background:#8c7b6a;color:#fcfaf5;border:1px solid #7a6a5a;border-radius:4px;font-weight:700;cursor:pointer;transition:background 0.2s,border-color 0.2s}#start-time-settings button[data-v-42af7a37]:hover{background:#7a6a5a;border-color:#6b5a4b}#start-time-settings .muted-btn[data-v-42af7a37]{background:#e9e1d6;color:#5a4f43;border-color:#d3c8b8}#start-time-settings .muted-btn[data-v-42af7a37]:hover{background:#dcd1c4}
+
+/*! tailwindcss v4.1.17 | MIT License | https://tailwindcss.com */:root{--bg:#f5f1e8;--paper:#fffdf7;--ink:#4a3f35;--muted:#6b5a4b;--line:#d3c8b8}html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:"Noto Serif SC",serif;line-height:1.6}body{background-image:linear-gradient(rgba(224,213,196,0.1) 1px,transparent 1px),linear-gradient(90deg,rgba(224,213,196,0.1) 1px,transparent 1px);background-size:20px 20px;padding:20px}
+</style></head><body><div id="app"></div></body></html>
